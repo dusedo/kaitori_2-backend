@@ -1,5 +1,5 @@
-# app.py
-
+import os
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from selenium import webdriver
@@ -7,31 +7,29 @@ from selenium.webdriver.chrome.options import Options
 import time
 import re
 import urllib.parse
-import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Seleniumの設定
-chrome_options = Options()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("--no-sandbox")
-
-# Heroku環境変数からChromeのパスを取得
-chrome_path = os.environ.get('GOOGLE_CHROME_BIN', 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
-# Heroku環境変数からChromedriverのパスを取得
-driver_path = os.environ.get('CHROMEDRIVER_PATH', 'C:\\path\\to\\chromedriver.exe')
+# ログの設定
+logging.basicConfig(level=logging.INFO)
 
 def fetch_with_retry(url, max_retries=3):
-    for _ in range(max_retries):
+    for attempt in range(max_retries):
         try:
-            driver = webdriver.Chrome(executable_path=driver_path, options=chrome_options)
+            chrome_options = Options()
+            chrome_options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+
+            driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), options=chrome_options)
             driver.get(url)
             time.sleep(2)  # ページが完全にロードされるのを待つ
             return driver
         except Exception as e:
-            print(f"Error fetching {url}: {e}")
+            app.logger.error(f"Error fetching {url} (Attempt {attempt + 1}/{max_retries}): {e}")
             time.sleep(1)
     return None
 
@@ -47,7 +45,7 @@ def fetch_kaitori_1chome(jan, driver):
         if match:
             return int(match.group(1).replace(',', ''))
     except Exception as e:
-        print(f"Error fetching 買取1丁目 for JAN {jan}: {e}")
+        app.logger.error(f"Error fetching 買取1丁目 for JAN {jan}: {e}")
     return None
 
 def fetch_morimori(jan, driver):
@@ -61,7 +59,7 @@ def fetch_morimori(jan, driver):
         if match:
             return int(match.group(1).replace(',', ''))
     except Exception as e:
-        print(f"Error fetching 森森買取 for JAN {jan}: {e}")
+        app.logger.error(f"Error fetching 森森買取 for JAN {jan}: {e}")
     return None
 
 def fetch_kaitori_wiki(jan, driver):
@@ -76,7 +74,7 @@ def fetch_kaitori_wiki(jan, driver):
                 if price:
                     return int(price)
     except Exception as e:
-        print(f"Error fetching 買取Wiki for JAN {jan}: {e}")
+        app.logger.error(f"Error fetching 買取Wiki for JAN {jan}: {e}")
     return None
 
 def fetch_kaitori_rudeya(jan, driver):
@@ -89,7 +87,7 @@ def fetch_kaitori_rudeya(jan, driver):
         if price_text:
             return int(price_text)
     except Exception as e:
-        print(f"Error fetching 買取ルデヤ for JAN {jan}: {e}")
+        app.logger.error(f"Error fetching 買取ルデヤ for JAN {jan}: {e}")
     return None
 
 def fetch_prices(jan):
@@ -133,5 +131,6 @@ def get_prices():
     filtered_results = [res for res in results if res is not None]
     return jsonify({'results': filtered_results})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+# `app.run()` は gunicorn によって実行されるため、コメントアウトまたは削除します
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=5000)
